@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -406,7 +406,7 @@ function ThFilter({
             // transparent overlay to catch outside clicks
             background: 'transparent'
           }}
-          onMouseDown={(e) => {
+          onMouseDown={() => {
             // close if clicking outside the menu area
             // we’ll stopPropagation on the menu itself below
             setOpenMenu(queryKey, false);
@@ -589,7 +589,8 @@ function ConfirmRemoveModal(
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', display:'grid', placeItems:'center' }}>
       <div style={{ background:'#fff', padding:16, borderRadius:12, minWidth:420 }}>
         <h3>Confirm Removal</h3>
-        <p><strong>{/* your display name fn here */}</strong></p>
+        <p><strong>{displayName(item)}</strong></p>
+        <p>ScannedCode: <code>{item.ScannedCode}</code></p>
         <p>In stock: <strong>{onHand}</strong></p>
 
         <div style={{ display:'grid', gap:8, marginTop:8 }}>
