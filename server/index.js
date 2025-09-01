@@ -14,7 +14,7 @@ const pool = new Pool({
 const app = express();
 // CORS only in dev (prod serves UI + API on same origin)
 if (process.env.NODE_ENV !== 'production') {
-  app.use(cors({ origin: ['http://localhost:5173'] }));
+  app.use(cors({ origin: API }));
 }
 app.use(express.json());
 
