@@ -1,0 +1,12 @@
+{
+  "name": "inventory-app",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
+    "start": "concurrently -n api,web -c magenta,cyan \"npm start --prefix server\" \"npm start --prefix web\"",
+    "seed": "node server/scripts/seed.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
