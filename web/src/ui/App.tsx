@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API = import.meta.env.VITE_API_URL || '';
 
 // Action codes (env-overridable)
 const ADD_CODE    = import.meta.env.VITE_ADD_ACTION_CODE    || '##ADD##';
