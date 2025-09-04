@@ -4,9 +4,22 @@ import { createPortal } from 'react-dom';
 const API = import.meta.env.VITE_API_URL || '';
 
 // Action codes (env-overridable)
-const ADD_CODE    = import.meta.env.VITE_ADD_ACTION_CODE    || '##ADD##';
+const ADD_CODE = import.meta.env.VITE_ADD_ACTION_CODE || '##ADD##';
 const REMOVE_CODE = import.meta.env.VITE_REMOVE_ACTION_CODE || '##REMOVE##';
 const SEARCH_CODE = import.meta.env.VITE_SEARCH_ACTION_CODE || '##SEARCH##';
+
+// --- Mobile helper ---
+function useIsMobile(breakpoint = 768) {
+  const [isM, setIsM] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false
+  );
+  React.useEffect(() => {
+    const onResize = () => setIsM(window.innerWidth <= breakpoint);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return isM;
+}
 
 type Item = {
   id: string;
@@ -47,6 +60,8 @@ const FILTERABLE: { key: keyof Item; label: string; queryKey: string }[] = [
 ];
 
 export default function App() {
+  const isMobile = useIsMobile();
+
   const [mode, setMode] = useState<Mode>('idle');
   const [toast, setToast] = useState('');
   const [scanInput, setScanInput] = useState('');
@@ -64,11 +79,7 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { inputRef.current?.focus(); }, [mode, pendingItem, confirmRemove]);
 
-  // Helpers
-  const makeQueryString = (
-    term: string,
-    f: Record<string, Set<string>> = filters
-  ) => {
+  const makeQueryString = (term: string, f: Record<string, Set<string>> = filters) => {
     const p = new URLSearchParams();
     if (term) p.set('q', term);
     for (const { queryKey } of FILTERABLE) {
@@ -106,11 +117,10 @@ export default function App() {
     if (!code) return;
 
     // Action codes
-    if (code === ADD_CODE)  { setMode('add');    setToast('Add mode enabled.');    setScanInput(''); setResults([]); setSearchSummary(''); return; }
-    if (code === REMOVE_CODE){ setMode('remove'); setToast('Remove mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); return; }
-    if (code === SEARCH_CODE){ setMode('search'); setToast('Search mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm(''); return; }
+    if (code === ADD_CODE)    { setMode('add');    setToast('Add mode enabled.');    setScanInput(''); setResults([]); setSearchSummary(''); return; }
+    if (code === REMOVE_CODE) { setMode('remove'); setToast('Remove mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); return; }
+    if (code === SEARCH_CODE) { setMode('search'); setToast('Search mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm(''); return; }
 
-    // Mode-specific behavior
     if (mode === 'idle') {
       setToast(`No mode selected. Scan ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE} first.`);
       setScanInput('');
@@ -170,18 +180,17 @@ export default function App() {
     }
   }
 
-  // Handlers for filter UI
-    const toggleFilter = (queryKey: string, value: string) => {
+  // Filter handlers (use NEXT filters state to avoid stale updates)
+  const toggleFilter = (queryKey: string, value: string) => {
     setFilters(prev => {
       const s = new Set(prev[queryKey] ?? []);
       if (s.has(value)) s.delete(value); else s.add(value);
       const next = { ...prev, [queryKey]: s };
-      runSearch(searchTerm, next).catch(console.error);   // use NEXT filters
+      runSearch(searchTerm, next).catch(console.error);
       return next;
     });
   };
 
-  // Clear one column's selections
   const clearFilter = (queryKey: string) => {
     setFilters(prev => {
       const next = { ...prev, [queryKey]: new Set<string>() };
@@ -190,7 +199,6 @@ export default function App() {
     });
   };
 
-  // Clear all filters
   const clearAllFilters = () => {
     setFilters(() => {
       const next = {} as Record<string, Set<string>>;
@@ -200,76 +208,133 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 24, maxWidth: 1100 }}>
-      <h1>Inventory — Scan & Search</h1>
+    <div style={{
+      fontFamily: 'system-ui, sans-serif',
+      padding: isMobile ? 12 : 24,
+      maxWidth: isMobile ? '100%' : 1100,
+      margin: '0 auto'
+    }}>
+      <h1 style={{ marginTop: 0 }}>Inventory — Scan & Search</h1>
       <p>
         Mode: <strong>{mode}</strong>
         &nbsp;|&nbsp; Codes: <code>{ADD_CODE}</code> add, <code>{REMOVE_CODE}</code> remove, <code>{SEARCH_CODE}</code> search
       </p>
       {toast && <p>{toast}</p>}
 
-      <form onSubmit={handleSubmit} style={{ display:'grid', gap:10, border:'1px solid #e5e7eb', padding:12, borderRadius:12 }}>
+      <form onSubmit={handleSubmit} style={{
+        display: 'grid', gap: 10, border: '1px solid #e5e7eb', padding: 12, borderRadius: 12
+      }}>
         <label>Scan / enter (action or product/search text)
           <input
             ref={inputRef}
             value={scanInput}
-            onChange={e=>setScanInput(e.target.value)}
+            onChange={e => setScanInput(e.target.value)}
             placeholder={`Scan ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE}; then scan/enter code or search term`}
             autoCapitalize="off" autoCorrect="off" spellCheck={false}
+            style={{ minHeight: 44, padding: '10px 12px', fontSize: 16, width: '100%' }}
           />
         </label>
-        <button type="submit" disabled={!!pendingItem || !!confirmRemove}>Submit</button>
+        <button type="submit" disabled={!!pendingItem || !!confirmRemove}
+          style={{ minHeight: 44, padding: '10px 14px' }}>
+          Submit
+        </button>
       </form>
 
-      {/* SEARCH TABLE */}
+      {/* SEARCH UI */}
       {mode === 'search' && (
         <section style={{ marginTop: 16 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: 8, flexWrap: 'wrap', marginBottom: 8
+          }}>
             <h3 style={{ margin: 0 }}>{searchSummary || 'All items'}</h3>
-            <button onClick={clearAllFilters} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:'6px 10px' }}>Clear all filters</button>
+            <button onClick={clearAllFilters}
+              style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', minHeight: 44 }}>
+              Clear all filters
+            </button>
           </div>
 
-          <div style={{ overflowX:'auto', border:'1px solid #e5e7eb', borderRadius:12 }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead style={{ background:'#f9fafb' }}>
-                <tr>
-                  {FILTERABLE.map(col => (
-                    <ThFilter
-                      key={col.queryKey}
-                      label={col.label}
-                      queryKey={col.queryKey}
-                      selected={filters[col.queryKey]}
-                      openMenu={openMenu}
-                      setOpenMenu={async (qk, open) => {
-                        if (open) await ensureDistinct(qk);
-                        setOpenMenu(open ? qk : null);
-                      }}
-                      options={distinct[col.queryKey] || []}
-                      onToggle={(v)=>toggleFilter(col.queryKey, v)}
-                      onClear={()=>clearFilter(col.queryKey)}
-                    />
-                  ))}
-                  <th style={thStyle}>Price</th>
-                  <th style={thStyle}>Qty</th>
-                  <th style={thStyle}>On-hand</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.length === 0 ? (
-                  <tr><td colSpan={FILTERABLE.length + 3} style={{ padding:12, textAlign:'center', opacity:.7 }}>No results.</td></tr>
-                ) : results.map(r => (
-                  <tr key={r.id} style={{ borderTop:'1px solid #eee' }}>
+          {/* Mobile: card list */}
+          {isMobile ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {results.length === 0 ? (
+                <div style={{ padding: 12, textAlign: 'center', opacity: .7 }}>No results.</div>
+              ) : results.map(r => (
+                <div key={r.id} style={{
+                  border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#fff'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 700, lineHeight: 1.2 }}>
+                      {displayName(r)}
+                    </div>
+                    <div style={{
+                      fontWeight: 700, padding: '4px 8px', border: '1px solid #e5e7eb',
+                      borderRadius: 999, minWidth: 54, textAlign: 'center'
+                    }}>
+                      {r.onHand}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, opacity: .8, marginTop: 6 }}>
+                    Code: <code>{r.ScannedCode}</code>
+                    {r.Color ? ` · ${r.Color}` : ''}{r.Size ? ` · ${r.Size}` : ''}
+                  </div>
+                  {(r.Price ?? r.Qty ?? r['SoldOrder#'] ?? r.PurchasedFrom) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 13 }}>
+                      {r.Price != null && <span style={chip}>Price: {r.Price}</span>}
+                      {r.Qty != null && <span style={chip}>Qty: {r.Qty}</span>}
+                      {r['SoldOrder#'] && <span style={chip}>Order#: {r['SoldOrder#']}</span>}
+                      {r.PurchasedFrom && <span style={chip}>From: {r.PurchasedFrom}</span>}
+                    </div>
+                  )}
+                  {r.Notes && <div style={{ marginTop: 8, fontSize: 13 }}>{r.Notes}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Desktop: table with sticky head
+            <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr>
                     {FILTERABLE.map(col => (
-                      <td key={col.queryKey} style={tdStyle}>{String(r[col.key] ?? '')}</td>
+                      <ThFilter
+                        key={col.queryKey}
+                        label={col.label}
+                        queryKey={col.queryKey}
+                        selected={filters[col.queryKey]}
+                        openMenu={openMenu}
+                        setOpenMenu={async (qk, open) => {
+                          if (open) await ensureDistinct(qk);
+                          setOpenMenu(open ? qk : null);
+                        }}
+                        options={distinct[col.queryKey] || []}
+                        onToggle={(v) => toggleFilter(col.queryKey, v)}
+                        onClear={() => clearFilter(col.queryKey)}
+                        isMobile={false}
+                      />
                     ))}
-                    <td style={tdStyle}>{r.Price ?? ''}</td>
-                    <td style={tdStyle}>{r.Qty ?? ''}</td>
-                    <td style={{ ...tdStyle, fontWeight:600 }}>{r.onHand}</td>
+                    <th style={thStyle}>Price</th>
+                    <th style={thStyle}>Qty</th>
+                    <th style={thStyle}>On-hand</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {results.length === 0 ? (
+                    <tr><td colSpan={FILTERABLE.length + 3} style={{ padding: 12, textAlign: 'center', opacity: .7 }}>No results.</td></tr>
+                  ) : results.map(r => (
+                    <tr key={r.id} style={{ borderTop: '1px solid #eee' }}>
+                      {FILTERABLE.map(col => (
+                        <td key={col.queryKey} style={tdStyle}>{String((r as any)[col.key] ?? '')}</td>
+                      ))}
+                      <td style={tdStyle}>{r.Price ?? ''}</td>
+                      <td style={tdStyle}>{r.Qty ?? ''}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.onHand}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 
@@ -283,7 +348,7 @@ export default function App() {
             try {
               if (mode === 'add') {
                 const addRes = await fetch(`${API}/inventory/add`, {
-                  method:'POST', headers:{'Content-Type':'application/json'},
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ barcode: item.ScannedCode })
                 });
                 if (!addRes.ok) throw new Error('Add failed');
@@ -306,14 +371,17 @@ export default function App() {
           item={confirmRemove.item}
           onHand={confirmRemove.onHand}
           onCancel={() => setConfirmRemove(null)}
-          onConfirm={async () => {
+          onConfirm={async (extra) => {
             try {
               const res = await fetch(`${API}/inventory/remove/confirm`, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ barcode: confirmRemove.item.ScannedCode })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  barcode: confirmRemove.item.ScannedCode,
+                  ...extra
+                })
               });
               if (!res.ok) {
-                const t = await res.json().catch(()=>({}));
+                const t = await res.json().catch(() => ({}));
                 if ((t as any)?.error === 'OUT_OF_STOCK') setToast('Already out of stock.');
                 else setToast('Failed to remove');
               } else {
@@ -332,11 +400,14 @@ export default function App() {
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign:'left', padding:10, position:'relative', whiteSpace:'nowrap' };
-const tdStyle: React.CSSProperties = { padding:10, verticalAlign:'top' };
+const thStyle: React.CSSProperties = { textAlign: 'left', padding: 10, position: 'relative', whiteSpace: 'nowrap' };
+const tdStyle: React.CSSProperties = { padding: 10, verticalAlign: 'top' };
+const chip: React.CSSProperties = {
+  border: '1px solid #e5e7eb', borderRadius: 999, padding: '2px 8px', background: '#f8fafc'
+};
 
 function ThFilter({
-  label, queryKey, selected, openMenu, setOpenMenu, options, onToggle, onClear
+  label, queryKey, selected, openMenu, setOpenMenu, options, onToggle, onClear, isMobile
 }: {
   label: string;
   queryKey: string;
@@ -346,6 +417,7 @@ function ThFilter({
   options: { value: string; count: number }[];
   onToggle: (val: string) => void;
   onClear: () => void;
+  isMobile: boolean;
 }) {
   const isOpen = openMenu === queryKey;
   const selCount = selected?.size ?? 0;
@@ -354,38 +426,39 @@ function ThFilter({
     top: 0, left: 0, height: 300, width: 260
   });
 
-  // Compute menu position relative to viewport.
   const computePos = () => {
+    if (isMobile) return; // bottom-sheet on mobile
     const btn = btnRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
     const width = 260;
-    const maxHeight = Math.min(340, window.innerHeight - 16); // leave some padding to edges
+    const maxHeight = Math.min(340, window.innerHeight - 16);
     let left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
     let top = r.bottom + 6;
-    if (top + maxHeight > window.innerHeight) {
-      // open upwards if not enough space below
-      top = Math.max(8, r.top - maxHeight - 6);
-    }
+    if (top + maxHeight > window.innerHeight) top = Math.max(8, r.top - maxHeight - 6);
     setPos({ top, left, height: maxHeight, width });
   };
 
   useEffect(() => {
-    if (isOpen) {
-      computePos();
-      const onScroll = () => computePos();
-      const onResize = () => computePos();
-      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenMenu(queryKey, false); };
-      window.addEventListener('scroll', onScroll, true);
-      window.addEventListener('resize', onResize);
-      window.addEventListener('keydown', onKey);
-      return () => {
-        window.removeEventListener('scroll', onScroll, true);
-        window.removeEventListener('resize', onResize);
-        window.removeEventListener('keydown', onKey);
-      };
-    }
-  }, [isOpen, queryKey, setOpenMenu]);
+    if (!isOpen) return;
+    computePos();
+    const onScroll = () => computePos();
+    const onResize = () => computePos();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenMenu(queryKey, false); };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isOpen, isMobile, queryKey, setOpenMenu]);
+
+  const buttonStyle: React.CSSProperties = {
+    border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 10px',
+    background: '#fff', cursor: 'pointer', minHeight: 44
+  };
 
   return (
     <th style={thStyle}>
@@ -393,7 +466,7 @@ function ThFilter({
         ref={btnRef}
         type="button"
         onClick={() => setOpenMenu(queryKey, !isOpen)}
-        style={{ border:'1px solid #d1d5db', borderRadius:8, padding:'4px 8px', background:'#fff', cursor:'pointer' }}
+        style={buttonStyle}
         title={selCount ? `${selCount} selected` : 'Filter'}
       >
         {label}{selCount ? ` (${selCount})` : ''}
@@ -401,59 +474,65 @@ function ThFilter({
 
       {isOpen && createPortal(
         <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            // transparent overlay to catch outside clicks
-            background: 'transparent'
-          }}
-          onMouseDown={() => {
-            // close if clicking outside the menu area
-            // we’ll stopPropagation on the menu itself below
-            setOpenMenu(queryKey, false);
-          }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: isMobile ? 'rgba(0,0,0,.2)' : 'transparent' }}
+          onMouseDown={() => setOpenMenu(queryKey, false)}
         >
           <div
             onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position: 'fixed',
-              top: pos.top,
-              left: pos.left,
-              width: pos.width,
-              maxHeight: pos.height,
-              overflow: 'auto',
-              background: '#fff',
-              border: '1px solid #e5e7eb',
-              borderRadius: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,.12)',
-              padding: 8
-            }}
+            style={
+              isMobile
+                ? {
+                    position: 'fixed',
+                    left: 8, right: 8, bottom: 8,
+                    maxHeight: '70vh',
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 14,
+                    boxShadow: '0 16px 48px rgba(0,0,0,.2)',
+                    padding: 10,
+                    overflow: 'auto'
+                  }
+                : {
+                    position: 'fixed',
+                    top: pos.top, left: pos.left,
+                    width: pos.width, maxHeight: pos.height,
+                    overflow: 'auto', background: '#fff',
+                    border: '1px solid #e5e7eb', borderRadius: 10,
+                    boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8
+                  }
+            }
           >
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <strong>{label}</strong>
-              <button type="button" onClick={onClear} style={{ border:'none', background:'transparent', color:'#2563eb', cursor:'pointer' }}>
+              <button
+                type="button"
+                onClick={onClear}
+                style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 8, minHeight: 44 }}
+              >
                 Clear
               </button>
             </div>
             {options.length === 0 ? (
-              <div style={{ padding:8, opacity:.7 }}>No values.</div>
+              <div style={{ padding: 8, opacity: .7 }}>No values.</div>
             ) : options.map(opt => {
               const id = `${queryKey}::${opt.value}`;
               const checked = selected?.has(opt.value) ?? false;
               return (
-                <label key={id} htmlFor={id} style={{ display:'flex', justifyContent:'space-between', gap:8, padding:'4px 6px', cursor:'pointer' }}>
-                  <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <label key={id} htmlFor={id}
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '10px 6px', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <input id={id} type="checkbox" checked={checked} onChange={() => onToggle(opt.value)} />
                     <span>{opt.value}</span>
                   </span>
-                  <span style={{ opacity:.6 }}>{opt.count}</span>
+                  <span style={{ opacity: .6 }}>{opt.count}</span>
                 </label>
               );
             })}
-            <div style={{ textAlign:'right', marginTop:6 }}>
+            <div style={{ textAlign: 'right', marginTop: 6 }}>
               <button
                 type="button"
                 onClick={() => setOpenMenu(queryKey, false)}
-                style={{ border:'1px solid #d1d5db', borderRadius:8, padding:'4px 8px', background:'#fff' }}
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px', background: '#fff', minHeight: 44 }}
               >
                 Close
               </button>
@@ -466,15 +545,14 @@ function ThFilter({
   );
 }
 
-// --- NewItemModal, ConfirmRemoveModal remain identical to your latest version ---
 function NewItemModal(
   { initialCode, onClose, onCreated }:
   { initialCode: string; onClose: () => void; onCreated: (item: Item) => void }
 ) {
   const [InventoryDate, setInventoryDate] = useState(() => {
     const d = new Date();
-    const pad = (n:number)=>String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
 
   const [ScannedCode, setScannedCode] = useState(initialCode);
@@ -509,7 +587,7 @@ function NewItemModal(
         Price: Price !== '' ? Number(Price) : null,
         Qty: Qty !== '' ? Number(Qty) : null
       };
-      const res = await fetch(`${API}/items`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const res = await fetch(`${API}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error('Create failed');
       const item: Item = await res.json();
       onCreated(item);
@@ -518,50 +596,50 @@ function NewItemModal(
   }
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', display:'grid', placeItems:'center' }}>
-      <form onSubmit={submit} style={{ background:'#fff', padding:16, borderRadius:12, minWidth:420, display:'grid', gap:8 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'grid', placeItems: 'center' }}>
+      <form onSubmit={submit} style={{ background: '#fff', padding: 16, borderRadius: 12, minWidth: 420, display: 'grid', gap: 8 }}>
         <h3>New Item</h3>
         <label>InventoryDate
-          <input type="datetime-local" value={InventoryDate} onChange={e=>setInventoryDate(e.target.value)} required />
+          <input type="datetime-local" value={InventoryDate} onChange={e => setInventoryDate(e.target.value)} required />
         </label>
         <label>ScannedCode
-          <input value={ScannedCode} onChange={e=>setScannedCode(e.target.value)} required />
+          <input value={ScannedCode} onChange={e => setScannedCode(e.target.value)} required />
         </label>
         <label>Brand
-          <input value={Brand} onChange={e=>setBrand(e.target.value)} />
+          <input value={Brand} onChange={e => setBrand(e.target.value)} />
         </label>
         <label>Model
-          <input value={Model} onChange={e=>setModel(e.target.value)} required />
+          <input value={Model} onChange={e => setModel(e.target.value)} required />
         </label>
-        <div style={{ display:'flex', gap:8 }}>
-          <label style={{ flex:1 }}>Size
-            <input value={Size} onChange={e=>setSize(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1 }}>Size
+            <input value={Size} onChange={e => setSize(e.target.value)} />
           </label>
-          <label style={{ flex:1 }}>Color
-            <input value={Color} onChange={e=>setColor(e.target.value)} />
+          <label style={{ flex: 1 }}>Color
+            <input value={Color} onChange={e => setColor(e.target.value)} />
           </label>
         </div>
         <label>Notes
-          <input value={Notes} onChange={e=>setNotes(e.target.value)} />
+          <input value={Notes} onChange={e => setNotes(e.target.value)} />
         </label>
         <label>SoldOrder#
-          <input value={SoldOrder} onChange={e=>setSoldOrder(e.target.value)} />
+          <input value={SoldOrder} onChange={e => setSoldOrder(e.target.value)} />
         </label>
         <label>PurchasedFrom
-          <input value={PurchasedFrom} onChange={e=>setPurchasedFrom(e.target.value)} />
+          <input value={PurchasedFrom} onChange={e => setPurchasedFrom(e.target.value)} />
         </label>
-        <div style={{ display:'flex', gap:8 }}>
-          <label style={{ flex:1 }}>PaintThickness
-            <input type="number" step="0.01" value={PaintThickness} onChange={e=>setPaintThickness(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1 }}>PaintThickness
+            <input type="number" step="0.01" value={PaintThickness} onChange={e => setPaintThickness(e.target.value)} />
           </label>
-          <label style={{ flex:1 }}>Price
-            <input type="number" step="0.01" value={Price} onChange={e=>setPrice(e.target.value)} />
+          <label style={{ flex: 1 }}>Price
+            <input type="number" step="0.01" value={Price} onChange={e => setPrice(e.target.value)} />
           </label>
-          <label style={{ flex:1 }}>Qty
-            <input type="number" step="1" value={Qty} onChange={e=>setQty(e.target.value)} />
+          <label style={{ flex: 1 }}>Qty
+            <input type="number" step="1" value={Qty} onChange={e => setQty(e.target.value)} />
           </label>
         </div>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Create'}</button>
         </div>
@@ -572,40 +650,42 @@ function NewItemModal(
 
 function ConfirmRemoveModal(
   { item, onHand, onCancel, onConfirm }:
-  { item: Item; onHand: number; onCancel: () => void; onConfirm: (payload: {
-    ["Order Id"]?: string | null;
-    ["Where bought from"]?: string | null;
-    ["Date Subtracted"]?: string | null;
-  }) => void }
+  {
+    item: Item; onHand: number; onCancel: () => void; onConfirm: (payload: {
+      ["Order Id"]?: string | null;
+      ["Where bought from"]?: string | null;
+      ["Date Subtracted"]?: string | null;
+    }) => void
+  }
 ) {
   const [orderId, setOrderId] = React.useState('');
   const [whereBought, setWhereBought] = React.useState('');
   const [dateSub, setDateSub] = React.useState(() => {
-    const d = new Date(); const pad=(n:number)=>String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', display:'grid', placeItems:'center' }}>
-      <div style={{ background:'#fff', padding:16, borderRadius:12, minWidth:420 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ background: '#fff', padding: 16, borderRadius: 12, minWidth: 420 }}>
         <h3>Confirm Removal</h3>
         <p><strong>{displayName(item)}</strong></p>
         <p>ScannedCode: <code>{item.ScannedCode}</code></p>
         <p>In stock: <strong>{onHand}</strong></p>
 
-        <div style={{ display:'grid', gap:8, marginTop:8 }}>
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
           <label>Order Id
-            <input value={orderId} onChange={e=>setOrderId(e.target.value)} placeholder="e.g. SO-12345" />
+            <input value={orderId} onChange={e => setOrderId(e.target.value)} placeholder="e.g. SO-12345" />
           </label>
           <label>Where bought from
-            <input value={whereBought} onChange={e=>setWhereBought(e.target.value)} placeholder="e.g. Website / Store" />
+            <input value={whereBought} onChange={e => setWhereBought(e.target.value)} placeholder="e.g. Website / Store" />
           </label>
           <label>Date Subtracted
-            <input type="datetime-local" value={dateSub} onChange={e=>setDateSub(e.target.value)} />
+            <input type="datetime-local" value={dateSub} onChange={e => setDateSub(e.target.value)} />
           </label>
         </div>
 
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
           <button type="button" onClick={onCancel}>No</button>
           <button
             type="button"
