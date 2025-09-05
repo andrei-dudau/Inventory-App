@@ -207,6 +207,12 @@ export default function App() {
     });
   };
 
+  // Mobile helper to open a filter menu
+  const openFilterMenu = async (qk: string) => {
+    await ensureDistinct(qk);
+    setOpenMenu(qk);
+  };
+
   return (
     <div style={{
       fontFamily: 'system-ui, sans-serif',
@@ -254,44 +260,55 @@ export default function App() {
             </button>
           </div>
 
-          {/* Mobile: card list */}
+          {/* Mobile: FILTER BAR + card list */}
           {isMobile ? (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {results.length === 0 ? (
-                <div style={{ padding: 12, textAlign: 'center', opacity: .7 }}>No results.</div>
-              ) : results.map(r => (
-                <div key={r.id} style={{
-                  border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#fff'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontWeight: 700, lineHeight: 1.2 }}>
-                      {displayName(r)}
+            <>
+              <MobileFilterBar
+                filters={filters}
+                openMenu={openMenu}
+                setOpenMenu={(qk, open) => setOpenMenu(open ? qk : null)}
+                distinct={distinct}
+                openFilterMenu={openFilterMenu}
+                toggleFilter={toggleFilter}
+                clearFilter={clearFilter}
+              />
+              <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                {results.length === 0 ? (
+                  <div style={{ padding: 12, textAlign: 'center', opacity: .7 }}>No results.</div>
+                ) : results.map(r => (
+                  <div key={r.id} style={{
+                    border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#fff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ fontWeight: 700, lineHeight: 1.2 }}>
+                        {displayName(r)}
+                      </div>
+                      <div style={{
+                        fontWeight: 700, padding: '4px 8px', border: '1px solid #e5e7eb',
+                        borderRadius: 999, minWidth: 54, textAlign: 'center'
+                      }}>
+                        {r.onHand}
+                      </div>
                     </div>
-                    <div style={{
-                      fontWeight: 700, padding: '4px 8px', border: '1px solid #e5e7eb',
-                      borderRadius: 999, minWidth: 54, textAlign: 'center'
-                    }}>
-                      {r.onHand}
+                    <div style={{ fontSize: 13, opacity: .8, marginTop: 6 }}>
+                      Code: <code>{r.ScannedCode}</code>
+                      {r.Color ? ` · ${r.Color}` : ''}{r.Size ? ` · ${r.Size}` : ''}
                     </div>
+                    {(r.Price ?? r.Qty ?? r['SoldOrder#'] ?? r.PurchasedFrom) && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 13 }}>
+                        {r.Price != null && <span style={chip}>Price: {r.Price}</span>}
+                        {r.Qty != null && <span style={chip}>Qty: {r.Qty}</span>}
+                        {r['SoldOrder#'] && <span style={chip}>Order#: {r['SoldOrder#']}</span>}
+                        {r.PurchasedFrom && <span style={chip}>From: {r.PurchasedFrom}</span>}
+                      </div>
+                    )}
+                    {r.Notes && <div style={{ marginTop: 8, fontSize: 13 }}>{r.Notes}</div>}
                   </div>
-                  <div style={{ fontSize: 13, opacity: .8, marginTop: 6 }}>
-                    Code: <code>{r.ScannedCode}</code>
-                    {r.Color ? ` · ${r.Color}` : ''}{r.Size ? ` · ${r.Size}` : ''}
-                  </div>
-                  {(r.Price ?? r.Qty ?? r['SoldOrder#'] ?? r.PurchasedFrom) && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 13 }}>
-                      {r.Price != null && <span style={chip}>Price: {r.Price}</span>}
-                      {r.Qty != null && <span style={chip}>Qty: {r.Qty}</span>}
-                      {r['SoldOrder#'] && <span style={chip}>Order#: {r['SoldOrder#']}</span>}
-                      {r.PurchasedFrom && <span style={chip}>From: {r.PurchasedFrom}</span>}
-                    </div>
-                  )}
-                  {r.Notes && <div style={{ marginTop: 8, fontSize: 13 }}>{r.Notes}</div>}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           ) : (
-            // Desktop: table with sticky head
+            // Desktop: table with sticky head + header filters
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
@@ -400,6 +417,139 @@ export default function App() {
   );
 }
 
+/* =======================
+   Mobile Filter Bar
+   ======================= */
+
+function MobileFilterBar({
+  filters,
+  openMenu,
+  setOpenMenu,
+  distinct,
+  openFilterMenu,
+  toggleFilter,
+  clearFilter
+}: {
+  filters: Record<string, Set<string>>;
+  openMenu: string | null;
+  setOpenMenu: (qk: string, open: boolean) => void;
+  distinct: Record<string, { value: string; count: number }[]>;
+  openFilterMenu: (qk: string) => void;
+  toggleFilter: (qk: string, val: string) => void;
+  clearFilter: (qk: string) => void;
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 8,
+      WebkitOverflowScrolling: 'touch'
+    }}>
+      {FILTERABLE.map(col => (
+        <MobileFilterButton
+          key={col.queryKey}
+          label={col.label}
+          queryKey={col.queryKey}
+          selected={filters[col.queryKey]}
+          isOpen={openMenu === col.queryKey}
+          open={() => openFilterMenu(col.queryKey)}
+          close={() => setOpenMenu(col.queryKey, false)}
+          options={distinct[col.queryKey] || []}
+          toggle={(val) => toggleFilter(col.queryKey, val)}
+          clear={() => clearFilter(col.queryKey)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MobileFilterButton({
+  label, queryKey, selected, isOpen, open, close, options, toggle, clear
+}: {
+  label: string;
+  queryKey: string;
+  selected?: Set<string>;
+  isOpen: boolean;
+  open: () => void;
+  close: () => void;
+  options: { value: string; count: number }[];
+  toggle: (val: string) => void;
+  clear: () => void;
+}) {
+  const selCount = selected?.size ?? 0;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={open}
+        style={{
+          border: '1px solid #d1d5db', borderRadius: 999, padding: '10px 12px',
+          background: '#fff', minHeight: 44, whiteSpace: 'nowrap'
+        }}
+        title={selCount ? `${selCount} selected` : 'Filter'}
+      >
+        {label}{selCount ? ` (${selCount})` : ''}
+      </button>
+
+      {isOpen && createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,.2)' }}
+          onMouseDown={close}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', left: 8, right: 8, bottom: 8,
+              maxHeight: '70vh', background: '#fff', border: '1px solid #e5e7eb',
+              borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,.2)',
+              padding: 10, overflow: 'auto'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <strong>{label}</strong>
+              <button
+                type="button"
+                onClick={() => { clear(); close(); }}
+                style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 8, minHeight: 44 }}
+              >
+                Clear
+              </button>
+            </div>
+            {options.length === 0 ? (
+              <div style={{ padding: 8, opacity: .7 }}>No values.</div>
+            ) : options.map(opt => {
+              const id = `${queryKey}::${opt.value}`;
+              const checked = selected?.has(opt.value) ?? false;
+              return (
+                <label key={id} htmlFor={id}
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '10px 6px', cursor: 'pointer' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input id={id} type="checkbox" checked={checked} onChange={() => toggle(opt.value)} />
+                    <span>{opt.value}</span>
+                  </span>
+                  <span style={{ opacity: .6 }}>{opt.count}</span>
+                </label>
+              );
+            })}
+            <div style={{ textAlign: 'right', marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={close}
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px', background: '#fff', minHeight: 44 }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+/* =======================
+   Desktop ThFilter
+   ======================= */
+
 const thStyle: React.CSSProperties = { textAlign: 'left', padding: 10, position: 'relative', whiteSpace: 'nowrap' };
 const tdStyle: React.CSSProperties = { padding: 10, verticalAlign: 'top' };
 const chip: React.CSSProperties = {
@@ -427,7 +577,7 @@ function ThFilter({
   });
 
   const computePos = () => {
-    if (isMobile) return; // bottom-sheet on mobile
+    if (isMobile) return;
     const btn = btnRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
@@ -474,41 +624,24 @@ function ThFilter({
 
       {isOpen && createPortal(
         <div
-          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: isMobile ? 'rgba(0,0,0,.2)' : 'transparent' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'transparent' }}
           onMouseDown={() => setOpenMenu(queryKey, false)}
         >
           <div
             onMouseDown={(e) => e.stopPropagation()}
-            style={
-              isMobile
-                ? {
-                    position: 'fixed',
-                    left: 8, right: 8, bottom: 8,
-                    maxHeight: '70vh',
-                    background: '#fff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 14,
-                    boxShadow: '0 16px 48px rgba(0,0,0,.2)',
-                    padding: 10,
-                    overflow: 'auto'
-                  }
-                : {
-                    position: 'fixed',
-                    top: pos.top, left: pos.left,
-                    width: pos.width, maxHeight: pos.height,
-                    overflow: 'auto', background: '#fff',
-                    border: '1px solid #e5e7eb', borderRadius: 10,
-                    boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8
-                  }
-            }
+            style={{
+              position: 'fixed',
+              top: pos.top, left: pos.left,
+              width: pos.width, maxHeight: pos.height,
+              overflow: 'auto', background: '#fff',
+              border: '1px solid #e5e7eb', borderRadius: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8
+            }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <strong>{label}</strong>
-              <button
-                type="button"
-                onClick={onClear}
-                style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 8, minHeight: 44 }}
-              >
+              <button type="button" onClick={onClear}
+                style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 8, minHeight: 44 }}>
                 Clear
               </button>
             </div>
@@ -544,6 +677,10 @@ function ThFilter({
     </th>
   );
 }
+
+/* =======================
+   Modals
+   ======================= */
 
 function NewItemModal(
   { initialCode, onClose, onCreated }:
