@@ -111,32 +111,42 @@ export default function App() {
     if (mode === 'search') runSearch('').catch(err => console.error(err));
   }, [mode]); // eslint-disable-line
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const code = scanInput.trim();
+  // Core processor for typed or pasted codes
+  const processCode = async (raw: string) => {
+    const code = raw.trim();
     if (!code) return;
 
-    // Action codes
-    if (code === ADD_CODE)    { setMode('add');    setToast('Add mode enabled.');    setScanInput(''); setResults([]); setSearchSummary(''); return; }
-    if (code === REMOVE_CODE) { setMode('remove'); setToast('Remove mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); return; }
-    if (code === SEARCH_CODE) { setMode('search'); setToast('Search mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm(''); return; }
+    // Action codes → instant mode switch
+    if (code === ADD_CODE) {
+      setMode('add'); setToast('Add mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm('');
+      return;
+    }
+    if (code === REMOVE_CODE) {
+      setMode('remove'); setToast('Remove mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm('');
+      return;
+    }
+    if (code === SEARCH_CODE) {
+      setMode('search'); setToast('Search mode enabled.'); setScanInput(''); setResults([]); setSearchSummary(''); setSearchTerm('');
+      return;
+    }
 
     if (mode === 'idle') {
-      setToast(`No mode selected. Scan ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE} first.`);
+      setToast(`No mode selected. Paste ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE} first.`);
       setScanInput('');
       return;
     }
 
     try {
       if (mode === 'search') {
+        // Instant search on paste; keep the text in the input for refinement
+        setScanInput(code);
         setSearchTerm(code);
         await runSearch(code);
         setToast('');
-        setScanInput('');
         return;
       }
 
-      // Lookup by ScannedCode
+      // Lookup by ScannedCode for add/remove
       const getRes = await fetch(`${API}/items/${encodeURIComponent(code)}`);
       if (getRes.status === 404) {
         setPendingItem({ code });
@@ -178,6 +188,20 @@ export default function App() {
       console.error(err);
       setToast('Error processing');
     }
+  };
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await processCode(scanInput);
+  }
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = e.clipboardData.getData('text');
+    if (!pasted) return;
+
+    // We handle the whole flow ourselves to avoid double entry
+    e.preventDefault();
+    await processCode(pasted);
   }
 
   // Filter handlers (use NEXT filters state to avoid stale updates)
@@ -230,12 +254,13 @@ export default function App() {
       <form onSubmit={handleSubmit} style={{
         display: 'grid', gap: 10, border: '1px solid #e5e7eb', padding: 12, borderRadius: 12
       }}>
-        <label>Scan / enter (action or product/search text)
+        <label>Scan / paste (action or product/search text)
           <input
             ref={inputRef}
             value={scanInput}
             onChange={e => setScanInput(e.target.value)}
-            placeholder={`Scan ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE}; then scan/enter code or search term`}
+            onPaste={handlePaste}
+            placeholder={`Paste ${ADD_CODE}, ${REMOVE_CODE}, or ${SEARCH_CODE}; then paste/enter a code or search term`}
             autoCapitalize="off" autoCorrect="off" spellCheck={false}
             style={{ minHeight: 44, padding: '10px 12px', fontSize: 16, width: '100%' }}
           />
